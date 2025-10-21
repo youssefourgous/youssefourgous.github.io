@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Student Voting</title>
+    <style>
+      :root {
+        --bg: #f8fafc; --card: #ffffff; --primary: #2563eb;
+        --success: #16a34a; --warning: #d97706; --danger: #dc2626; --muted: #6b7280; --radius: 14px;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 20px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial; background: var(--bg); display: grid; min-height: 100vh; place-items: center; }
+      .card { width: 100%; max-width: 520px; background: var(--card); border-radius: var(--radius); padding: 24px; box-shadow: 0 20px 60px rgba(2,6,23,.08); }
+      h1 { font-size: 22px; margin: 0 0 12px; }
+      p { color: var(--muted); margin-top: 0; }
+      label { display: block; font-weight: 600; margin-bottom: 8px; }
+      input, select, button { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #e5e7eb; font-size: 16px; outline: none; }
+      input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+      .row { display: grid; gap: 12px; }
+      .btn { cursor: pointer; background: var(--primary); color: white; border: none; font-weight: 600; }
+      .btn:hover { filter: brightness(1.05); }
+      .btn:disabled { opacity: .6; cursor: not-allowed; }
+      .msg { padding: 10px 12px; border-radius: 10px; margin-top: 10px; font-weight: 600; }
+      .msg.success { background: #ecfdf5; color: #065f46; }
+      .msg.warning { background: #fff7ed; color: #7c2d12; }
+      .msg.danger { background: #fef2f2; color: #7f1d1d; }
+      .loading { display: none; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
+      .spinner { width: 16px; height: 16px; border: 2px solid #e5e7eb; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .welcome { display: none; }
+      .vote-section { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>🗳️ Student Voting</h1>
+      <p class="muted">Verify your Student ID (Massar) and cast your vote.</p>
+
+      <div class="row" id="verifySection">
+        <label for="studentId">Student ID (Massar)</label>
+        <input type="text" id="studentId" placeholder="Enter your ID" />
+        <button id="verifyBtn" class="btn">Verify ID</button>
+        <div class="loading" id="loading">
+          <div class="spinner"></div>
+          <span>⏳ Please wait...</span>
+        </div>
+        <div id="verifyMsg"></div>
+      </div>
+
+      <div id="welcome" class="welcome msg success"></div>
+
+      <div class="vote-section" id="voteSection">
+        <div class="row">
+          <label for="candidate">Select your candidate</label>
+          <select id="candidate">
+            <option value="" selected disabled>-- Choose a candidate --</option>
+            <option value="Candidate A">Candidate A</option>
+            <option value="Candidate B">Candidate B</option>
+            <option value="Candidate C">Candidate C</option>
+          </select>
+          <button id="submitBtn" class="btn">Submit Vote</button>
+          <div id="voteMsg"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = sel => document.querySelector(sel);
+      const verifyBtn = $('#verifyBtn');
+      const submitBtn = $('#submitBtn');
+      const loading = $('#loading');
+      const verifyMsg = $('#verifyMsg');
+      const voteMsg = $('#voteMsg');
+      const welcome = $('#welcome');
+      const voteSection = $('#voteSection');
+
+      let verifiedStudent = null;
+
+      function setLoading(isLoading) {
+        loading.style.display = isLoading ? 'flex' : 'none';
+        verifyBtn.disabled = isLoading;
+      }
+
+      function showVerifyMessage(type, text) {
+        verifyMsg.className = 'msg ' + (type || '');
+        verifyMsg.textContent = text;
+      }
+
+      function showVoteMessage(type, text) {
+        voteMsg.className = 'msg ' + (type || '');
+        voteMsg.textContent = text;
+      }
+
+      verifyBtn.addEventListener('click', () => {
+        const id = $('#studentId').value.trim();
+        if (!id) {
+          showVerifyMessage('warning', '⚠️ Please enter your Student ID');
+          return;
+        }
+        setLoading(true);
+        showVerifyMessage('', '');
+        google.script.run.withSuccessHandler((student) => {
+          setLoading(false);
+          if (!student) {
+            showVerifyMessage('danger', '❌ This student ID is not in the class');
+            verifiedStudent = null;
+            welcome.style.display = 'none';
+            voteSection.style.display = 'none';
+            return;
+          }
+          verifiedStudent = student;
+          welcome.textContent = `👋 Welcome ${student.first_name} ${student.last_name}! You can now vote.`;
+          welcome.style.display = 'block';
+          voteSection.style.display = 'block';
+          showVerifyMessage('success', '✅ ID verified. You can now vote.');
+        }).withFailureHandler((err) => {
+          setLoading(false);
+          showVerifyMessage('danger', '❌ Error verifying ID');
+          console.error(err);
+        }).getStudentData(id);
+      });
+
+      submitBtn.addEventListener('click', () => {
+        if (!verifiedStudent) {
+          showVoteMessage('warning', '⚠️ Please verify your ID first');
+          return;
+        }
+        const candidate = $('#candidate').value;
+        if (!candidate) {
+          showVoteMessage('warning', '⚠️ Please select a candidate');
+          return;
+        }
+        submitBtn.disabled = true;
+        showVoteMessage('', '');
+        google.script.run.withSuccessHandler((res) => {
+          submitBtn.disabled = false;
+          if (res && res.alreadyVoted) {
+            showVoteMessage('warning', '⚠️ You have already voted!');
+            return;
+          }
+          if (res && res.success) {
+            showVoteMessage('success', '✅ Your vote has been recorded successfully!');
+          } else {
+            showVoteMessage('danger', '❌ Could not submit vote');
+          }
+        }).withFailureHandler((err) => {
+          submitBtn.disabled = false;
+          showVoteMessage('danger', '❌ Could not submit vote');
+          console.error(err);
+        }).submitVote(verifiedStudent.national_id, candidate);
+      });
+    </script>
+  </body>
+</html>
